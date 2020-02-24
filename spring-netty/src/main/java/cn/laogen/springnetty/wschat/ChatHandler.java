@@ -1,5 +1,11 @@
 package cn.laogen.springnetty.wschat;
 
+import cn.laogen.springnetty.myentity.Command;
+import cn.laogen.springnetty.util.Const;
+import cn.laogen.springnetty.vo.Message;
+import cn.laogen.springnetty.wschat.Service.ChatService;
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -7,7 +13,10 @@ import io.netty.channel.group.ChannelGroup;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import io.netty.util.concurrent.GlobalEventExecutor;
+import javafx.beans.binding.ObjectExpression;
+import org.apache.commons.lang3.StringUtils;
 
+import java.lang.reflect.Method;
 import java.time.LocalDateTime;
 
 /**
@@ -29,6 +38,8 @@ public class ChatHandler extends SimpleChannelInboundHandler<TextWebSocketFrame>
      */
     @Override
     public void handlerAdded(ChannelHandlerContext ctx) throws Exception {
+
+        System.out.println(ctx.name());
         clients.add(ctx.channel());
     }
 
@@ -45,13 +56,26 @@ public class ChatHandler extends SimpleChannelInboundHandler<TextWebSocketFrame>
 
         //获取客户端传来的数据
         String text = msg.text();
-        System.out.println("接收到的数据：" + text);
-        for (Channel channel : clients) {
-            channel.writeAndFlush(
-                    new TextWebSocketFrame(
-                            "服务器收到消息" + LocalDateTime.now()
-                                    + "消息为" + text));
+        JSON parse = (JSON)JSONObject.parse(msg.text());
+        Message omsg = JSONObject.toJavaObject(parse, Message.class);
+        if (omsg instanceof Message){
+            Message jsonMsg = (Message)omsg;
+            System.out.println("接收到的数据：" + text);
+            if(StringUtils.isNotBlank(jsonMsg.getCommand())){
+                String methodName = Command.getMethod(jsonMsg.getCommand());
+                if (StringUtils.isNotBlank(methodName)){
+                    //根据不同的操作码调用不同的方法
+                    Class<ChatService> chatServiceClass = ChatService.class;
+                    Method declaredMethod =
+                            chatServiceClass.getMethod(methodName,ctx.channel().getClass(),jsonMsg.getClass());
+                    declaredMethod.setAccessible(true);
+
+                    declaredMethod.invoke(Const.chatService,ctx.channel(),jsonMsg);
+
+                }
+            }
         }
+
         //两种方法效果一样
 //        clients.writeAndFlush( new TextWebSocketFrame(
 //                "服务器收到消息" + LocalDateTime.now()
